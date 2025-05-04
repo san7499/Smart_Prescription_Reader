@@ -1,37 +1,37 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_cors import CORS
 import pytesseract
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageFilter
 import os
-import spacy
 import re
+import platform
+import spacy
 from reportlab.pdfgen import canvas
 from threading import Thread
-from flask_cors import CORS
 
+# Detect OS and set tesseract path only for Windows
+if platform.system() == 'Windows':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+# Flask app setup
 app = Flask(__name__)
 CORS(app)
 
-# Folder for uploads
 UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Load spaCy model
 nlp = spacy.load("en_core_web_sm")
 
-# Ensure the uploads folder exists
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# Ensure uploads folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Image preprocessing for better OCR
+# Preprocess the image before OCR
 def preprocess_image(image):
-    image = image.convert('L')  # Grayscale
-    enhancer = ImageEnhance.Contrast(image)
-    image = enhancer.enhance(2)  # Increase contrast
-    image = image.point(lambda p: p > 150 and 255)  # Binarization
-    image = image.filter(ImageFilter.SHARPEN)
+    image = image.convert('L')  # grayscale
+    image = image.point(lambda p: 255 if p > 180 else 0)  # thresholding
+    image = image.filter(ImageFilter.SHARPEN)  # sharpen text
     return image
 
-# Extract medicine-like lines from OCR text
+# Extract medicine-like patterns
 def extract_medicines(text):
     meds = []
     lines = text.split('\n')
@@ -47,29 +47,29 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_image():
     if 'image' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-
+        return jsonify({'error': 'No image uploaded'}), 400
     file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'Empty filename'}), 400
+
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
     file.save(filepath)
 
-    image = Image.open(filepath)
-    processed_image = preprocess_image(image)
-    text = pytesseract.image_to_string(processed_image, config='--psm 6 --oem 3')
-    meds = extract_medicines(text)
+    try:
+        image = Image.open(filepath)
+        processed_image = preprocess_image(image)
+        text = pytesseract.image_to_string(processed_image, config='--psm 6 --oem 3')
+        medicines = extract_medicines(text)
+        return jsonify({'text': text.strip(), 'medicines': medicines})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-    return jsonify({'text': text, 'medicines': meds})
-
-# Generate PDF from extracted text
+# PDF generation function
 def generate_pdf(text, filepath):
     c = canvas.Canvas(filepath)
-    c.setFont("Helvetica", 12)
-    y = 800
-    c.drawString(50, y, "Prescription")
-    y -= 20
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y, "Extracted Text:")
-    y -= 25
+    c.drawString(50, 800, "Prescription Extract")
+    y = 770
 
     c.setFont("Helvetica", 12)
     for line in text.split('\n'):
@@ -77,19 +77,23 @@ def generate_pdf(text, filepath):
         y -= 15
         if y < 50:
             c.showPage()
-            c.setFont("Helvetica", 12)
             y = 800
+            c.setFont("Helvetica", 12)
     c.save()
 
 @app.route('/download_pdf', methods=['POST'])
 def download_pdf():
     data = request.get_json()
-    text = data['text']
-    filename = 'prescription.pdf'
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    text = data.get('text', '').strip()
+    if not text:
+        return jsonify({'error': 'No text provided for PDF'}), 400
 
-    # PDF generation in a separate thread
-    Thread(target=generate_pdf, args=(text, filepath)).start()
+    filename = 'prescription.pdf'
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    thread = Thread(target=generate_pdf, args=(text, filepath))
+    thread.start()
+    thread.join()  # Wait for PDF to finish writing
 
     return jsonify({'url': f'/uploads/{filename}'})
 
@@ -98,5 +102,5 @@ def serve_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
-    # For local and Render compatibility
+    # Runs locally
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Smart Prescription Reader</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap">
-  <link rel="stylesheet" href="./static/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="container">
@@ -25,7 +25,7 @@
         </button>
       </div>
 
-      <!-- Scanner -->
+      <!-- Camera -->
       <div class="step">
         <label class="step-label">Step 2: Or Use Live Camera</label>
         <div class="video-container">
@@ -111,7 +111,7 @@
           } else {
             medList.innerHTML = "<li>No medicines detected.</li>";
           }
-          stopCamera(); // stop camera after capture
+          stopCamera();
         });
       }, 'image/jpeg');
     }
@@ -156,7 +156,7 @@
 
       fetch('/download_pdf', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
       })
       .then(res => res.json())

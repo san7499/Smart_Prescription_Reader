@@ -1,0 +1,6 @@
+Flask
+pytesseract
+Pillow
+spacy
+reportlab
+Flask-Cors

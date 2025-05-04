@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Prescription Reader</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap">
+  <link rel="stylesheet" href="./static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><i class="fas fa-prescription-bottle-alt"></i> Smart Prescription Reader</h1>
+      <p>Effortlessly extract, view, and export prescription details from images or live camera feed.</p>
+    </header>
+
+    <div class="steps-container">
+      <!-- Upload -->
+      <div class="step">
+        <label class="step-label">Step 1: Upload Prescription Image</label>
+        <input type="file" id="imageInput" accept="image/*" class="file-input">
+        <button class="btn primary-btn" onclick="uploadImage()">
+          <i class="fas fa-upload"></i> Upload & Extract
+        </button>
+      </div>
+
+      <!-- Scanner -->
+      <div class="step">
+        <label class="step-label">Step 2: Or Use Live Camera</label>
+        <div class="video-container">
+          <video id="camera" autoplay playsinline></video>
+          <canvas id="snapshotCanvas" style="display: none;"></canvas>
+        </div>
+        <button class="btn secondary-btn" onclick="startCamera()"><i class="fas fa-camera"></i> Start Camera</button>
+        <button class="btn capture-btn" onclick="captureImage()"><i class="fas fa-image"></i> Capture & Extract</button>
+      </div>
+
+      <!-- Extracted Text -->
+      <div class="step">
+        <h3><i class="fas fa-align-left"></i> Extracted Text</h3>
+        <pre id="output" class="output-text">Text will appear here...</pre>
+      </div>
+
+      <!-- Medicines -->
+      <div class="step">
+        <h3><i class="fas fa-pills"></i> Detected Medicines</h3>
+        <ul id="medList" class="med-list"><li>List will appear here...</li></ul>
+      </div>
+
+      <!-- Export PDF -->
+      <div class="step">
+        <button class="btn export-btn" onclick="exportPDF()">
+          <i class="fas fa-file-pdf"></i> Export as PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2025 Smart Prescription Reader. All rights reserved.</p>
+  </footer>
+
+  <script>
+    let cameraStream;
+
+    function startCamera() {
+      const video = document.getElementById('camera');
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          cameraStream = stream;
+          video.srcObject = stream;
+        })
+        .catch(err => {
+          alert("Camera access denied or unavailable.");
+        });
+    }
+
+    function stopCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    }
+
+    function captureImage() {
+      const video = document.getElementById('camera');
+      const canvas = document.getElementById('snapshotCanvas');
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append('image', blob, 'capture.jpg');
+
+        fetch('/upload', {
+          method: 'POST',
+          body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('output').innerText = data.text || "No text detected.";
+          const medList = document.getElementById('medList');
+          medList.innerHTML = '';
+          if (data.medicines.length) {
+            data.medicines.forEach(med => {
+              const li = document.createElement('li');
+              li.textContent = med;
+              medList.appendChild(li);
+            });
+          } else {
+            medList.innerHTML = "<li>No medicines detected.</li>";
+          }
+          stopCamera(); // stop camera after capture
+        });
+      }, 'image/jpeg');
+    }
+
+    function uploadImage() {
+      const input = document.getElementById('imageInput');
+      if (!input.files.length) {
+        alert("Please select an image of the prescription.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('image', input.files[0]);
+
+      fetch('/upload', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('output').innerText = data.text || "No text detected.";
+        const medList = document.getElementById('medList');
+        medList.innerHTML = '';
+        if (data.medicines.length) {
+          data.medicines.forEach(med => {
+            const li = document.createElement('li');
+            li.textContent = med;
+            medList.appendChild(li);
+          });
+        } else {
+          medList.innerHTML = "<li>No medicines detected.</li>";
+        }
+      });
+    }
+
+    function exportPDF() {
+      const text = document.getElementById('output').innerText;
+      if (!text.trim()) {
+        alert("No extracted text to export.");
+        return;
+      }
+
+      fetch('/download_pdf', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text })
+      })
+      .then(res => res.json())
+      .then(data => {
+        window.open(data.url, '_blank');
+      });
+    }
+  </script>
+</body>
+</html>

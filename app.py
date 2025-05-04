@@ -1,7 +1,7 @@
+import os
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter
-import os
 import spacy
 import re
 from reportlab.pdfgen import canvas
@@ -9,12 +9,13 @@ from threading import Thread
 from flask_cors import CORS
 
 # Tesseract executable path
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Use an environment variable for the Tesseract path (or a default for local development)
+pytesseract.pytesseract.tesseract_cmd = os.environ.get('TESSERACT_PATH', '/usr/bin/tesseract')  # Default for Linux environments
 
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')  # Set to 'uploads' or temporary directory
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 nlp = spacy.load("en_core_web_sm")
 
@@ -76,7 +77,7 @@ def download_pdf():
     data = request.get_json()
     text = data['text']
     filename = 'prescription.pdf'
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     Thread(target=generate_pdf, args=(text, filepath)).start()
     return jsonify({'url': f'/uploads/{filename}'})
 
@@ -85,4 +86,5 @@ def serve_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # In production, use a WSGI server like gunicorn, but for local development, Flask's built-in server is fine.
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
